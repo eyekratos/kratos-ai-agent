@@ -1,32 +1,30 @@
-# Kratos — YouTube Scout
+# Kratos — YouTube Studio
 
-A browser-based YouTube research and content-drafting app. No Ollama or local AI installation is needed. Gemini generates original ideas and scripts; YouTube Data API v3 is optional and adds live public-video research.
+A Streamlit app for YouTube research, original script writing, and AI thumbnail generation. It never uploads or publishes videos.
 
 ## Features
-- Generate original YouTube ideas, scripts, titles, thumbnail concepts, descriptions, hashtags, tags and a two-week content plan with Gemini.
-- Optionally search public YouTube video metadata by topic and competitor hints.
-- Sort returned videos by a rough views/day signal.
-- Download the generated strategy and script as Markdown.
-- **Drafting only:** this app never uploads or publishes videos automatically.
+- Generate an original script, titles, description, tags, hashtags, pinned comment and content calendar using the OpenAI API.
+- Generate a downloadable AI thumbnail PNG using the OpenAI Images API.
+- Optionally search public YouTube video metadata and sort by a rough views/day signal with YouTube Data API v3.
+- Download the script/content package as Markdown.
 
 ## Deploy on Streamlit Community Cloud
 1. Open https://share.streamlit.io/ and sign in with GitHub.
 2. Select repository `eyekratos/kratos-ai-agent`, branch `main`, main file `app.py`.
-3. Deploy the app.
-4. In the app's settings → Secrets, add your Gemini key:
+3. Deploy the app or open the existing deployment and wait for it to install the updated requirements.
+4. In app Settings → Secrets, add:
 ```toml
-GEMINI_API_KEY = "your-gemini-api-key"
-```
-5. Optional: add a YouTube Data API key to enable live video research:
-```toml
+OPENAI_API_KEY = "your-openai-api-key"
 YOUTUBE_API_KEY = "your-youtube-data-api-key"
 ```
+The YouTube key is optional. You can also enter keys in the app sidebar for the current session. Never commit keys to GitHub or share them in chat.
 
-You can also enter keys in the app sidebar for a session. Never commit keys to GitHub or share them in chat.
+## API keys and billing
+- OpenAI API key: https://platform.openai.com/api-keys
+- OpenAI API billing/usage: https://platform.openai.com/settings/organization/billing/overview
+- YouTube Data API v3 (optional): enable at https://console.cloud.google.com/apis/library/youtube.googleapis.com, then create a key at https://console.cloud.google.com/apis/credentials.
 
-## API keys
-- Gemini: https://aistudio.google.com/apikey — check current free-tier eligibility, region/model access and quotas. No local AI install is required, but free access is not guaranteed and may change.
-- YouTube Data API v3 (optional): https://console.cloud.google.com/apis/library/youtube.googleapis.com — enable the API, then create a key at https://console.cloud.google.com/apis/credentials. Public API usage has a quota.
+**Important:** ChatGPT subscriptions and OpenAI API billing are separate. API access, model availability and image generation may require an API billing method and are usage-billed. Check current pricing and limits before generating images.
 
 ## Local run (optional)
 Python 3.10+:
@@ -38,8 +36,7 @@ streamlit run app.py
 ```
 
 ## Limits
-- Views/day is a rough signal, not a reliable virality prediction.
+- Views/day is only a rough signal, not a reliable virality prediction.
 - The app cannot access private competitor analytics.
-- The current version does not render or upload videos automatically.
-- Use YouTube Studio Audience analytics for your own channel's best publishing time; generic times are only tests.
-- Respect copyright; use competitor videos for research and create original scripts.
+- Video scripts and generated thumbnails should be reviewed before use.
+- This app does not upload or publish content automatically.
