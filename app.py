@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 
 import streamlit as st
 from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from google import genai
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 st.set_page_config(page_title="Kratos YouTube Studio", page_icon="🎬", layout="wide")
 st.title("🎬 Kratos — YouTube Studio")
-st.caption("Research videos • write scripts and generate AI thumbnails with Gemini • no auto-posting")
+st.caption("Your YouTube workflow, connected from research → script → thumbnail → export. No auto-posting.")
 
 def secret_or_env(name):
     try:
@@ -58,6 +59,106 @@ if "thumbnail_bytes" not in st.session_state:
     st.session_state.thumbnail_bytes = None
 if "thumbnail_prompt_fallback" not in st.session_state:
     st.session_state.thumbnail_prompt_fallback = ""
+
+def render_roadmap():
+    steps = [
+        ("01", "Research", "Find topic opportunities", bool(st.session_state.research)),
+        ("02", "Script studio", "Build your content package", bool(st.session_state.content_package)),
+        ("03", "Thumbnail lab", "Create artwork in this app", bool(st.session_state.thumbnail_bytes)),
+        ("04", "Export", "Download your finished assets", bool(st.session_state.content_package and st.session_state.thumbnail_bytes)),
+    ]
+    html = """<style>
+    .kr-roadmap{display:flex;gap:25px;margin:14px 0 24px;font-family:Arial,sans-serif}
+    .kr-step{position:relative;flex:1;min-width:0;padding:15px 13px;border:1px solid #263b5b;border-radius:15px;background:linear-gradient(145deg,#121f35,#0b1220);color:#dbeafe}
+    .kr-step:not(:last-child):after{content:'';position:absolute;top:31px;left:calc(100% + 1px);width:25px;height:2px;background:linear-gradient(90deg,#4777ff,#39d5c5)}
+    .kr-num{font-size:11px;letter-spacing:2px;color:#75a4ff;font-weight:800}
+    .kr-name{font-size:15px;font-weight:800;margin-top:8px;color:#f8fafc}
+    .kr-desc{font-size:11px;line-height:1.45;color:#9fb1cc;margin-top:5px}
+    .kr-state{display:inline-block;margin-top:10px;padding:4px 7px;border-radius:99px;font-size:10px;font-weight:700;background:#202e44;color:#a9bad3}
+    .kr-state.done{background:#103b39;color:#73f0d4}.kr-step.done{border-color:#287e78}
+    @media(max-width:650px){.kr-roadmap{display:block}.kr-step{margin:0 0 10px!important}.kr-step:after{display:none}}
+    </style><div class="kr-roadmap">"""
+    for number, name, desc, done in steps:
+        status = "COMPLETE" if done else "UP NEXT"
+        css = "kr-state done" if done else "kr-state"
+        step_css = "kr-step done" if done else "kr-step"
+        html += f'<div class="{step_css}"><div class="kr-num">STEP {number}</div><div class="kr-name">{name}</div><div class="kr-desc">{desc}</div><span class="{css}">{status}</span></div>'
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+def _thumbnail_font(size, bold=False):
+    candidates = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+def create_designed_thumbnail(topic_text, title_text, style_name):
+    """Create a 1280x720 graphic thumbnail locally without an image API."""
+    w, h = 1280, 720
+    base = Image.new("RGB", (w, h))
+    pixels = base.load()
+    for y in range(h):
+        for x in range(w):
+            glow = max(0, 1 - (((x - 1010) / 760) ** 2 + ((y - 120) / 600) ** 2) ** 0.5)
+            pixels[x, y] = (int(7 + 10 * glow), int(14 + 24 * glow), int(31 + 50 * glow))
+    base = base.convert("RGBA")
+    glow_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow_layer, "RGBA")
+    gd.ellipse((790, 50, 1330, 590), fill=(37, 99, 235, 65))
+    gd.ellipse((900, 160, 1240, 500), fill=(20, 184, 166, 35))
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(65))
+    base = Image.alpha_composite(base, glow_layer)
+    draw = ImageDraw.Draw(base, "RGBA")
+    for x in range(40, w, 48):
+        draw.line((x, 0, x, h), fill=(140, 170, 220, 14), width=1)
+    for y in range(30, h, 48):
+        draw.line((0, y, w, y), fill=(140, 170, 220, 12), width=1)
+    draw.polygon([(860, 0), (1040, 0), (680, 720), (500, 720)], fill=(45, 95, 190, 20))
+    draw.rounded_rectangle((68, 65, 365, 112), radius=18, fill=(23, 205, 178, 35), outline=(67, 230, 206, 170), width=2)
+    draw.text((88, 78), "KRATOS / CREATOR LAB", font=_thumbnail_font(20, True), fill=(111, 255, 222, 255))
+    draw.ellipse((790, 150, 1195, 555), outline=(95, 145, 255, 170), width=5)
+    draw.ellipse((840, 200, 1145, 505), outline=(50, 220, 198, 150), width=3)
+    draw.rounded_rectangle((870, 255, 1115, 450), radius=28, fill=(15, 32, 61, 230), outline=(112, 161, 255, 210), width=3)
+    draw.polygon([(956, 300), (956, 406), (1040, 353)], fill=(86, 243, 211, 255))
+    draw.ellipse((1090, 170, 1140, 220), fill=(255, 198, 87, 255))
+    draw.ellipse((825, 480, 860, 515), fill=(255, 95, 130, 255))
+    raw = (title_text or topic_text or "MAKE IT HAPPEN").strip().upper()
+    words, lines, line = raw.split(), [], ""
+    for word in words:
+        candidate = (line + " " + word).strip()
+        if len(candidate) > 16 and line:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+        if len(lines) >= 2:
+            break
+    if line and len(lines) < 3:
+        lines.append(line)
+    lines = lines[:3] or ["MAKE IT HAPPEN"]
+    y = 210
+    for line in lines:
+        size = 68 if len(line) <= 13 else 54
+        font = _thumbnail_font(size, True)
+        draw.text((74, y + 6), line, font=font, fill=(0, 0, 0, 190), stroke_width=2, stroke_fill=(0, 0, 0, 190))
+        draw.text((68, y), line, font=font, fill=(250, 252, 255, 255), stroke_width=1, stroke_fill=(250, 252, 255, 255))
+        y += size + 12
+    draw.rounded_rectangle((70, 610, 580, 663), radius=14, fill=(37, 99, 235, 230))
+    draw.text((92, 622), "WATCH • LEARN • BUILD", font=_thumbnail_font(22, True), fill=(255, 255, 255, 255))
+    draw.text((1130, 650), "16:9", font=_thumbnail_font(18, True), fill=(170, 194, 230, 230))
+    output = BytesIO()
+    base.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()
+
+
+render_roadmap()
+
 
 def youtube_client():
     if not yt_key:
@@ -231,8 +332,12 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
             st.session_state.thumbnail_prompt_fallback = thumbnail_prompt
-            st.warning(f"Gemini could not create the image (often because image-model quota is unavailable): {e}")
-            st.info("You can still create the thumbnail in a browser image generator. Copy or download the prompt below, open the generator, paste it, and choose a 16:9 landscape image.")
+            st.warning(f"Gemini image generation was unavailable: {e}")
+            with st.spinner("Creating a polished thumbnail locally inside Kratos..."):
+                st.session_state.thumbnail_bytes = create_designed_thumbnail(
+                    topic, thumbnail_text, style
+                )
+            st.success("Thumbnail created inside Kratos. No other website needed.")
 
     if st.session_state.thumbnail_bytes:
         st.subheader("Generated thumbnail")
@@ -244,17 +349,6 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             mime="image/png",
         )
 
-    if st.session_state.thumbnail_prompt_fallback:
-        st.subheader("Free thumbnail fallback")
-        st.text_area("Ready-to-use AI thumbnail prompt", value=st.session_state.thumbnail_prompt_fallback, height=220)
-        st.download_button(
-            "⬇️ Download thumbnail prompt",
-            data=st.session_state.thumbnail_prompt_fallback,
-            file_name="kratos_thumbnail_prompt.txt",
-            mime="text/plain",
-        )
-        st.link_button("🎨 Open FreeImgGen", "https://freeimggen.com/", use_container_width=True)
-        st.caption("This is a separate browser service. Paste the prompt there; free limits and terms may change.")
 
 if not gemini_key:
     st.info("Add a Gemini API key to generate scripts and thumbnails.")
@@ -265,4 +359,4 @@ if not yt_key:
 st.divider()
 st.subheader("Before publishing")
 st.write("Review all facts, titles and claims. Use YouTube Studio audience analytics for your own best publishing times. This app only creates drafts and images; it never uploads or publishes videos.")
-st.caption("Public video data is not private competitor analytics. Provider quotas and model availability apply; free image generation is not guaranteed.")
+st.caption("Public video data is not private competitor analytics. Gemini image generation depends on API quota; if unavailable, Kratos automatically creates an in-app designed thumbnail.")
