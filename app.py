@@ -305,71 +305,106 @@ Do not upload or publish anything."""
         st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
 
 if st.session_state.content_package:
+    import re
+    import html
+
+    def parse_content_sections(markdown_text):
+        """Split generated Markdown into workflow nodes, keeping all text with its section."""
+        lines = markdown_text.strip().splitlines()
+        sections = []
+        current_title = "Content overview"
+        current_lines = []
+        for line in lines:
+            match = re.match(r"^\\s*(?:#{1,4}\\s*)?(\\d{1,2})[.)]\\s+(.+)$", line.strip())
+            is_ai_prompt = line.strip().lower().startswith("ai thumbnail prompt")
+            if match and current_lines:
+                sections.append((current_title, "\\n".join(current_lines).strip()))
+                current_title = match.group(2).strip().strip("*#")
+                current_lines = []
+            elif match:
+                current_title = match.group(2).strip().strip("*#")
+            elif is_ai_prompt and current_lines:
+                sections.append((current_title, "\\n".join(current_lines).strip()))
+                current_title = "AI Thumbnail Prompt"
+                current_lines = []
+            current_lines.append(line)
+        if current_lines:
+            sections.append((current_title, "\\n".join(current_lines).strip()))
+        # Merge the initial heading-only fragment into the first meaningful section.
+        cleaned = []
+        for title, body in sections:
+            if not body:
+                continue
+            cleaned.append((title, body))
+        return cleaned
+
+    def compact_node_body(markdown_text):
+        """Render Markdown as small, readable workflow bullets rather than one long paragraph."""
+        rendered = []
+        for raw in markdown_text.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            line = re.sub(r"^[-*+]\\s+", "", line)
+            line = re.sub(r"^\\d+[.)]\\s+", "", line)
+            line = re.sub(r"\\*\\*(.*?)\\*\\*", r"\\1", line)
+            line = re.sub(r"\\*(.*?)\\*", r"\\1", line)
+            if line:
+                rendered.append(line)
+        return rendered
+
+    sections = parse_content_sections(st.session_state.content_package)
     st.markdown("""
     <style>
-    .kr-content-wrap{max-width:100%;margin:10px 0 26px;color:#eaf1ff}
-    .kr-content-head{padding:22px 24px;border:1px solid #263e62;border-radius:18px;background:linear-gradient(120deg,#14233d,#101827 65%,#172c40);margin-bottom:18px}
-    .kr-content-kicker{font-size:11px;letter-spacing:2.5px;color:#7eb4ff;font-weight:800;text-transform:uppercase}
-    .kr-content-title{font-size:25px;font-weight:850;color:#f8fbff;margin-top:7px}
-    .kr-content-sub{font-size:13px;color:#a8bad5;margin-top:5px}
-    .kr-card{border:1px solid #263b59;border-radius:16px;overflow:hidden;margin:14px 0;background:linear-gradient(145deg,#111c2e,#0c1321);box-shadow:0 8px 24px rgba(0,0,0,.15)}
-    .kr-card-top{display:flex;align-items:center;gap:12px;padding:15px 18px;background:linear-gradient(90deg,rgba(54,101,178,.19),rgba(23,184,164,.06));border-bottom:1px solid #26364f}
-    .kr-card-num{display:flex;align-items:center;justify-content:center;min-width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#3976f6,#20cbb4);color:white;font-weight:900;font-size:12px}
-    .kr-card-title{font-size:17px;font-weight:800;color:#f4f7ff}
-    .kr-card-body{padding:18px 20px 20px;line-height:1.7;color:#d6e0f2}
-    .kr-card-body h1,.kr-card-body h2,.kr-card-body h3{color:#f6f9ff;margin-top:18px}
-    .kr-card-body h2{font-size:20px;border-bottom:1px solid #2a3a53;padding-bottom:9px}
-    .kr-card-body h3{font-size:16px}
-    .kr-card-body p{margin:8px 0}
-    .kr-card-body li{margin:7px 0}
-    .kr-card-body strong{color:#fff}
-    .kr-card-body blockquote{border-left:3px solid #39d5c5;background:#14243a;padding:10px 14px;border-radius:0 10px 10px 0}
-    .kr-card-body code{color:#83e9d9;background:#17253b;padding:2px 5px;border-radius:5px}
-    .kr-card-body hr{border-color:#2b3b54}
-    .kr-content-footer{padding:12px 16px;color:#93a9c8;font-size:12px;border-top:1px solid #253650}
-    @media(max-width:650px){.kr-content-title{font-size:21px}.kr-card-body{padding:14px}}
+    .wf-head{border:1px solid #2a4266;border-radius:18px;padding:20px 23px;background:linear-gradient(110deg,#14213a,#101827 65%,#16343d);margin:10px 0 20px}
+    .wf-kicker{font-size:11px;letter-spacing:2.5px;font-weight:800;color:#7cb6ff}
+    .wf-title{font-size:25px;font-weight:850;color:#f7faff;margin-top:6px}
+    .wf-sub{font-size:13px;color:#a7bad5;margin-top:5px}
+    .wf-canvas{border:1px solid #263b57;border-radius:18px;padding:18px;background:radial-gradient(circle at 20% 0%,#162741 0,#0b1220 55%);margin-bottom:20px}
+    .wf-node{border:1px solid #385477;border-radius:14px;background:linear-gradient(145deg,#15243a,#101827);padding:14px 16px;color:#e8f0ff;min-height:118px}
+    .wf-node-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+    .wf-number{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#16b8a6);font-weight:900;color:#fff;font-size:12px;flex-shrink:0}
+    .wf-node-title{font-weight:800;font-size:15px;color:#fff}
+    .wf-node-text{font-size:12px;line-height:1.6;color:#b7c7df}
+    .wf-connector{height:30px;display:flex;align-items:center;justify-content:center;color:#39d5c5;font-size:22px;font-weight:900;letter-spacing:3px}
+    .wf-node ul{padding-left:17px;margin:8px 0 0}.wf-node li{margin:5px 0}
+    .wf-output{border-color:#287e78;background:linear-gradient(145deg,#12332f,#101827)}
+    .wf-chip{display:inline-block;border:1px solid #2b5266;border-radius:99px;padding:4px 8px;font-size:10px;letter-spacing:.7px;color:#78ead7;margin:0 5px 5px 0}
     </style>
-    <div class="kr-content-wrap">
-      <div class="kr-content-head">
-        <div class="kr-content-kicker">KRATOS / CREATOR WORKSPACE</div>
-        <div class="kr-content-title">Your script &amp; content package</div>
-        <div class="kr-content-sub">Research, ideas, script, publishing assets — organized into clear sections.</div>
-      </div>
+    <div class="wf-head">
+      <div class="wf-kicker">KRATOS / AI WORKFLOW</div>
+      <div class="wf-title">Your YouTube Content Pipeline</div>
+      <div class="wf-sub">Follow the connected steps. Every stage shows the key information and deliverable.</div>
+      <div style="margin-top:12px"><span class="wf-chip">01 RESEARCH</span><span class="wf-chip">02 IDEAS</span><span class="wf-chip">03 SCRIPT</span><span class="wf-chip">04 PUBLISHING KIT</span><span class="wf-chip">05 THUMBNAIL</span></div>
     </div>
     """, unsafe_allow_html=True)
+
     st.download_button(
-        "⬇️ Download script & content package",
+        "⬇️ Download full content package (.md)",
         st.session_state.content_package,
         file_name="kratos_content_package.md",
         mime="text/markdown",
     )
-    # Split the generated Markdown into numbered sections and render each section
-    # in its own card instead of one long, plain document.
-    import re
-    sections = re.split(r"(?m)^(?=\s*\d+\.\s+)", st.session_state.content_package.strip())
-    rendered = 0
-    for section in sections:
-        section = section.strip()
-        if not section:
-            continue
-        first_line = section.splitlines()[0].strip()
-        match = re.match(r"^(\d+)\.\s+(.+)$", first_line)
-        if match:
-            number = int(match.group(1))
-            title = re.sub(r"[*#]", "", match.group(2)).strip()
-            body = "\n".join(section.splitlines()[1:]).strip()
-        else:
-            number = rendered + 1
-            title = re.sub(r"[*#]", "", first_line).strip()[:90] or f"Section {number}"
-            body = section
-        rendered += 1
+
+    # Display every generated section as a workflow node, connected vertically.
+    for idx, (section_title, body) in enumerate(sections):
+        node_num = idx + 1
+        title_safe = html.escape(re.sub(r"^\\d+[.)]\\s*", "", section_title).strip())
+        body_lines = compact_node_body(body)
+        if not body_lines:
+            body_lines = ["Details are included in the downloadable full content package."]
+        # Keep the node scannable; the full original package remains downloadable.
+        preview_lines = body_lines[:8]
+        list_html = "".join(f"<li>{html.escape(line[:260])}</li>" for line in preview_lines)
+        if len(body_lines) > len(preview_lines):
+            list_html += f"<li><em>{len(body_lines) - len(preview_lines)} more details in the downloadable package</em></li>"
+        node_class = "wf-node wf-output" if ("thumbnail" in title_safe.lower() or "calendar" in title_safe.lower()) else "wf-node"
         st.markdown(
-            f'<div class="kr-card"><div class="kr-card-top"><div class="kr-card-num">{number:02d}</div><div class="kr-card-title">{title}</div></div></div>',
+            f'<div class="wf-canvas"><div class="{node_class}"><div class="wf-node-head"><div class="wf-number">{node_num:02d}</div><div class="wf-node-title">{title_safe}</div></div><div class="wf-node-text"><ul>{list_html}</ul></div></div></div>',
             unsafe_allow_html=True,
         )
-        with st.container(border=True):
-            st.markdown(body)
-        st.markdown('<div class="kr-content-footer">KRATOS CREATOR LAB  •  CONTENT SECTION</div>', unsafe_allow_html=True)
+        if idx < len(sections) - 1:
+            st.markdown('<div class="wf-connector">│<br>↓</div>', unsafe_allow_html=True)
 
     thumbnail_prompt = f"""Create a professional YouTube thumbnail, wide 16:9 composition, for this video topic: {topic}.
 Recommended content and script context:
@@ -387,14 +422,14 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
             st.warning(f"Gemini image generation was unavailable: {e}")
-            with st.spinner("Creating a polished thumbnail locally inside Kratos..."):
+            with st.spinner("Creating a designed thumbnail locally inside Kratos..."):
                 st.session_state.thumbnail_bytes = create_designed_thumbnail(
                     topic, thumbnail_text, style
                 )
             st.success("Thumbnail created inside Kratos. No other website needed.")
 
     if st.session_state.thumbnail_bytes:
-        st.subheader("Generated thumbnail")
+        st.subheader("🎨 Thumbnail Lab")
         st.image(st.session_state.thumbnail_bytes, use_container_width=True)
         st.download_button(
             "⬇️ Download thumbnail PNG",
