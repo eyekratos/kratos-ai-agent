@@ -1,45 +1,79 @@
 import os
+import base64
 from datetime import datetime, timezone
 
 import streamlit as st
-from google import genai
+from openai import OpenAI
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-st.set_page_config(page_title="Kratos YouTube Scout", page_icon="🎬", layout="wide")
-st.title("🎬 Kratos — YouTube Scout")
-st.caption("Research • original ideas and scripts • thumbnail concepts • content planner — no auto-posting")
+st.set_page_config(page_title="Kratos YouTube Studio", page_icon="🎬", layout="wide")
+st.title("🎬 Kratos — YouTube Studio")
+st.caption("Research videos • write scripts • generate AI thumbnails • download your content — no auto-posting")
+
+def secret_or_env(name):
+    try:
+        return st.secrets.get(name, os.getenv(name, ""))
+    except Exception:
+        return os.getenv(name, "")
 
 with st.sidebar:
     st.header("API setup")
-    yt_key = st.text_input(
-        "YouTube Data API key (optional — for live video research)",
-        value=os.getenv("YOUTUBE_API_KEY", ""),
+    openai_key = st.text_input(
+        "OpenAI API key (script + thumbnail)",
+        value=secret_or_env("OPENAI_API_KEY"),
         type="password",
-        help="Without this key, you can still generate ideas and scripts using Gemini. Live YouTube video metrics require this key.",
+        help="OpenAI API billing is separate from a ChatGPT subscription.",
     )
-    gemini_key = st.text_input(
-        "Gemini API key (required)",
-        value=os.getenv("GEMINI_API_KEY", ""),
+    yt_key = st.text_input(
+        "YouTube Data API key (live search)",
+        value=secret_or_env("YOUTUBE_API_KEY"),
         type="password",
+        help="Optional. Without it, you can still write scripts and generate thumbnails.",
     )
     region = st.selectbox("Audience country", ["IN", "US", "GB", "CA", "AU"], index=0)
     language = st.selectbox("Script language", ["Hinglish", "Hindi", "English"])
-    st.caption("Never put API keys in source code or public GitHub. Free quotas and model availability can change.")
+    st.caption("Never commit API keys to GitHub. API usage may incur charges.")
+
+topic = st.text_input("Video topic / niche", placeholder="e.g. 5 AI tools that save time")
+competitors = st.text_input("Competitor channel names (optional)", placeholder="Creator A, Creator B")
+c1, c2, c3 = st.columns(3)
+with c1:
+    count = st.selectbox("Videos to research", [10, 20, 30, 50], index=1)
+with c2:
+    fmt = st.selectbox("Video format", ["YouTube Shorts", "Long-form", "Both"], index=2)
+with c3:
+    duration = st.selectbox("Target duration", ["30–45 seconds", "60 seconds", "5–8 minutes", "8–12 minutes"], index=2)
+
+style = st.selectbox(
+    "Thumbnail style",
+    ["Cinematic high contrast", "Clean tech editorial", "Dark luxury", "Bright creator style", "Minimal and premium"],
+)
+thumbnail_text = st.text_input("Thumbnail text (optional)", placeholder="Leave blank to let the AI decide")
+if "research" not in st.session_state:
+    st.session_state.research = []
+if "content_package" not in st.session_state:
+    st.session_state.content_package = ""
+if "thumbnail_bytes" not in st.session_state:
+    st.session_state.thumbnail_bytes = None
+
+def get_openai_client():
+    if not openai_key:
+        st.error("Add your OpenAI API key in the sidebar or Streamlit Secrets.")
+        st.stop()
+    return OpenAI(api_key=openai_key)
 
 def youtube_client():
+    if not yt_key:
+        st.error("Add a YouTube Data API key in the sidebar to use live YouTube research.")
+        st.stop()
     return build("youtube", "v3", developerKey=yt_key, cache_discovery=False)
 
 def search_videos(query, max_results=20):
     yt = youtube_client()
     response = yt.search().list(
-        part="snippet",
-        q=query,
-        type="video",
-        maxResults=max_results,
-        order="viewCount",
-        regionCode=region,
-        relevanceLanguage="en",
+        part="snippet", q=query, type="video", maxResults=max_results,
+        order="viewCount", regionCode=region, relevanceLanguage="en"
     ).execute()
     ids = [x["id"]["videoId"] for x in response.get("items", [])]
     if not ids:
@@ -51,14 +85,11 @@ def search_videos(query, max_results=20):
         views = int(stats.get("viewCount", 0))
         published = s.get("publishedAt", "")
         age_days = max(
-            (datetime.now(timezone.utc) - datetime.fromisoformat(published.replace("Z", "+00:00"))).days,
-            1,
+            (datetime.now(timezone.utc) - datetime.fromisoformat(published.replace("Z", "+00:00"))).days, 1
         ) if published else 1
         rows.append({
-            "title": s.get("title", ""),
-            "channel": s.get("channelTitle", ""),
-            "published": published[:10],
-            "views": views,
+            "title": s.get("title", ""), "channel": s.get("channelTitle", ""),
+            "published": published[:10], "views": views,
             "likes": int(stats.get("likeCount", 0)),
             "comments": int(stats.get("commentCount", 0)),
             "views_per_day": round(views / age_days),
@@ -66,51 +97,46 @@ def search_videos(query, max_results=20):
         })
     return sorted(rows, key=lambda x: x["views_per_day"], reverse=True)
 
-def ask_gemini(prompt):
-    if not gemini_key:
-        st.error("Add your Gemini API key in the sidebar or Streamlit Secrets.")
-        st.stop()
-    client = genai.Client(api_key=gemini_key)
-    response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
-    return response.text or "No text returned."
+def generate_script(prompt):
+    client = get_openai_client()
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        input=prompt,
+    )
+    return response.output_text or "No text returned."
 
-topic = st.text_input("Your niche / topic", placeholder="e.g. AI tools, finance, smartphone reviews")
-competitors = st.text_input("Competitor channel names (optional)", placeholder="Creator A, Creator B")
-c1, c2, c3 = st.columns(3)
-with c1:
-    count = st.selectbox("Videos to research", [10, 20, 30, 50], index=1)
-with c2:
-    fmt = st.selectbox("Video format", ["YouTube Shorts", "Long-form", "Both"], index=2)
-with c3:
-    duration = st.selectbox("Target duration", ["30–45 seconds", "60 seconds", "5–8 minutes", "8–12 minutes"], index=2)
+def generate_thumbnail(prompt):
+    client = get_openai_client()
+    result = client.images.generate(
+        model="gpt-image-1.5",
+        prompt=prompt,
+        size="1536x1024",
+        quality="high",
+        output_format="png",
+        n=1,
+    )
+    return base64.b64decode(result.data[0].b64_json)
 
-if "research" not in st.session_state:
-    st.session_state.research = []
-if "analysis" not in st.session_state:
-    st.session_state.analysis = ""
-
-b1, b2 = st.columns(2)
-with b1:
+left, right = st.columns(2)
+with left:
     research_clicked = st.button(
-        "🔎 Research YouTube videos",
-        type="secondary",
+        "🔎 Research live YouTube videos",
         disabled=not topic.strip() or not yt_key,
-        help="Requires a YouTube Data API key.",
         use_container_width=True,
     )
-with b2:
-    generate_clicked = st.button(
-        "🧠 Generate ideas & complete script",
+with right:
+    script_clicked = st.button(
+        "✍️ Generate script + content package",
         type="primary",
-        disabled=not topic.strip() or not gemini_key,
+        disabled=not topic.strip() or not openai_key,
         use_container_width=True,
     )
 
 if research_clicked:
     try:
         with st.spinner("Searching public YouTube video metadata..."):
-            query = topic + (" " + competitors if competitors.strip() else "")
-            st.session_state.research = search_videos(query, count)
+            q = topic + (" " + competitors if competitors.strip() else "")
+            st.session_state.research = search_videos(q, count)
         st.success(f"Found {len(st.session_state.research)} videos.")
     except HttpError as e:
         st.error(f"YouTube API error: {e}")
@@ -119,11 +145,9 @@ if research_clicked:
 
 rows = st.session_state.research
 if rows:
-    st.subheader("Video opportunity board")
+    st.subheader("Live YouTube opportunity board")
     st.dataframe(
-        rows,
-        use_container_width=True,
-        hide_index=True,
+        rows, use_container_width=True, hide_index=True,
         column_config={
             "url": st.column_config.LinkColumn("Video link"),
             "views": st.column_config.NumberColumn(format="%d"),
@@ -131,65 +155,82 @@ if rows:
         },
     )
 
-if generate_clicked:
+if script_clicked:
     evidence = "\n".join(
-        f"- {x['title']} | channel={x['channel']} | views={x['views']} | "
-        f"views/day={x['views_per_day']} | published={x['published']} | url={x['url']}"
-        for x in rows[:10]
-    ) or "No live YouTube data was provided. Do not pretend to have searched YouTube or invent current views, trends, channels, or metrics."
-    prompt = f"""Act as an evidence-conscious YouTube strategist.
-Topic/niche: {topic}
-Competitor hints: {competitors or 'none supplied'}
+        f"- {x['title']} | channel={x['channel']} | views={x['views']} | views/day={x['views_per_day']} | published={x['published']} | url={x['url']}"
+        for x in rows[:15]
+    ) or "No live YouTube results supplied. Do not invent current trends, video stats, or competitor findings."
+    prompt = f"""You are a careful YouTube content strategist and scriptwriter.
+Topic: {topic}
+Competitor hints: {competitors or 'not provided'}
 Format: {fmt}
 Target duration: {duration}
 Script language: {language}
 Audience region: {region}
 
-Use any supplied public video metadata as imperfect signals only. If no live YouTube data is supplied, clearly label the research as idea generation based on general knowledge, not live trend research. Never invent metrics or claim that a topic is currently viral without evidence. Never promise virality or claim views prove causation. Do not copy other creators' scripts; create original material.
+Use the public YouTube data below only as imperfect evidence. If no live results are supplied, clearly say this is ideation, not live trend research. Never invent metrics or promise virality. Create original scripts; do not copy other creators.
 
-VIDEO DATA:
+LIVE VIDEO DATA:
 {evidence}
 
-Return:
-1. Brief competitor landscape only if evidence is supplied; otherwise state that live competitor data is unavailable.
-2. Five original video ideas ranked by potential, with audience, rationale, score /10 and caveat.
-3. Best idea, three honest titles, thumbnail concept and 3–5 word thumbnail text.
-4. Complete original timestamped script for {duration}, with first-five-second hook, open loops, examples, retention resets and CTA. Flag factual claims that need verification.
-5. Description, chapters if long-form, tags, hashtags and pinned comment.
-6. Two-week publishing plan with suggested test slots in {region} local time; state that these are hypotheses.
-7. Metrics to review after publishing: CTR, first 30-second retention, average view duration and returning viewers.
-
-Keep the output practical, clearly formatted in Markdown, and suitable for a creator to review and manually publish. Do not upload or publish anything.
-"""
+Create a complete content package in well-formatted Markdown:
+1. Short research summary and caveats.
+2. Five original video ideas ranked by audience appeal with reasons.
+3. Recommended idea, three honest title options, hook and thumbnail concept.
+4. Complete timestamped script for {duration}, in {language}, with strong opening, examples, transitions, retention resets and CTA. Mark facts that need checking.
+5. Video description, chapters if long-form, tags, hashtags and pinned comment.
+6. A two-week content calendar.
+7. Post-publishing metrics to review (CTR, early retention, average view duration).
+8. At the end add a clearly labelled 'AI THUMBNAIL PROMPT' with a detailed 16:9 thumbnail concept for the recommended idea. Visual style: {style}. Thumbnail text preference: {thumbnail_text or 'choose 2–5 short readable words'}.
+Do not upload or publish anything."""
     try:
-        with st.spinner("Generating original ideas and script with Gemini..."):
-            st.session_state.analysis = ask_gemini(prompt)
+        with st.spinner("Writing original script and content package with OpenAI..."):
+            st.session_state.content_package = generate_script(prompt)
+            st.session_state.thumbnail_bytes = None
     except Exception as e:
-        st.error(f"AI generation failed. Check API key, quota and model availability: {e}")
+        st.error(f"Script generation failed: {e}")
 
-if st.session_state.analysis:
-    st.subheader("Your content package")
-    st.markdown(st.session_state.analysis)
+if st.session_state.content_package:
+    st.subheader("Your script & content package")
+    st.markdown(st.session_state.content_package)
     st.download_button(
-        "⬇️ Download strategy & script",
-        st.session_state.analysis,
-        file_name="kratos_youtube_strategy.md",
+        "⬇️ Download script & content package",
+        st.session_state.content_package,
+        file_name="kratos_content_package.md",
         mime="text/markdown",
     )
 
+    thumbnail_prompt = f"""Create a professional YouTube thumbnail, wide 16:9 composition, for this video topic: {topic}.
+Recommended content and script context:
+{st.session_state.content_package[:5000]}
+
+Style: {style}.
+Thumbnail text: {thumbnail_text or 'choose a short, punchy 2–5 word phrase relevant to the topic'}.
+Make the focal subject large and readable on mobile, use strong contrast, clear visual hierarchy, intentional negative space, expressive but believable imagery, crisp lighting, polished creator-economy art direction, and a clean background. Avoid clutter, tiny text, logos/watermarks, fake UI, fabricated statistics, and misleading claims. Keep all text inside safe margins. The final image should look like a clickable but honest YouTube thumbnail. Landscape 16:9, no borders."""
+    if st.button("🖼️ Generate AI thumbnail", type="primary", disabled=not openai_key):
+        try:
+            with st.spinner("Generating thumbnail with OpenAI Images API... this can take a little while."):
+                st.session_state.thumbnail_bytes = generate_thumbnail(thumbnail_prompt)
+            st.success("Thumbnail generated.")
+        except Exception as e:
+            st.error(f"Thumbnail generation failed. Check API access, billing, model access and quota: {e}")
+
+    if st.session_state.thumbnail_bytes:
+        st.subheader("Generated thumbnail")
+        st.image(st.session_state.thumbnail_bytes, use_container_width=True)
+        st.download_button(
+            "⬇️ Download thumbnail PNG",
+            data=st.session_state.thumbnail_bytes,
+            file_name="kratos_youtube_thumbnail.png",
+            mime="image/png",
+        )
+
+if not openai_key:
+    st.info("Add an OpenAI API key to generate scripts and thumbnails. OpenAI API billing is separate from ChatGPT Plus/Go/Pro subscriptions.")
 if not yt_key:
-    st.info("Gemini-only mode: ideas and scripts work with your Gemini key. Add a YouTube Data API key later if you want live video search and public metrics.")
-elif not rows:
-    st.info("Add a topic and choose Research YouTube videos for live public metadata, or generate ideas and a script directly.")
+    st.info("YouTube live research is optional. Add a YouTube Data API key to search public videos and retrieve available public statistics.")
 
 st.divider()
-st.subheader("Publishing-time guidance")
-st.write(
-    "Use YouTube Studio → Analytics → Audience → “When your viewers are on YouTube” "
-    "as your main timing signal. If you have no audience data, test 2–3 consistent slots "
-    "for two weeks and compare CTR and retention."
-)
-st.caption(
-    "This app creates research summaries and drafts only. It never uploads or publishes videos. "
-    "Public metadata is not private channel analytics. API quotas and hosting limits apply."
-)
+st.subheader("Before publishing")
+st.write("Review all facts, titles and claims. Use YouTube Studio audience analytics for your own best publishing times. This app only creates drafts and images; it never uploads or publishes videos.")
+st.caption("Public video data is not private competitor analytics. API quotas, model access, and charges apply.")
