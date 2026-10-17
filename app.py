@@ -1,16 +1,15 @@
 import os
-import base64
 from datetime import datetime, timezone
 
 import streamlit as st
+import requests
 from google import genai
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from openai import OpenAI
 
 st.set_page_config(page_title="Kratos YouTube Studio", page_icon="🎬", layout="wide")
 st.title("🎬 Kratos — YouTube Studio")
-st.caption("Research videos • write scripts with Gemini • generate AI thumbnails with OpenAI • no auto-posting")
+st.caption("Research videos • write scripts with Gemini • generate AI thumbnails with Hugging Face • no auto-posting")
 
 def secret_or_env(name):
     try:
@@ -26,11 +25,11 @@ with st.sidebar:
         type="password",
         help="Used to generate scripts and content packages.",
     )
-    openai_key = st.text_input(
-        "OpenAI API key (thumbnail only)",
-        value=secret_or_env("OPENAI_API_KEY"),
+    hf_token = st.text_input(
+        "Hugging Face token (thumbnail only)",
+        value=secret_or_env("HF_TOKEN"),
         type="password",
-        help="OpenAI image generation needs API access and available API credits. ChatGPT subscription is separate.",
+        help="Used for Hugging Face image inference. Free access may be limited by model availability and monthly credits.",
     )
     yt_key = st.text_input(
         "YouTube Data API key (live search)",
@@ -110,19 +109,34 @@ def generate_script(prompt):
     return response.text or "No text returned."
 
 def generate_thumbnail(prompt):
-    if not openai_key:
-        st.error("Add an OpenAI API key to generate the thumbnail. Script generation does not require OpenAI credits.")
+    if not hf_token:
+        st.error("Add a Hugging Face token in the sidebar or Streamlit Secrets as HF_TOKEN.")
         st.stop()
-    client = OpenAI(api_key=openai_key)
-    result = client.images.generate(
-        model="gpt-image-1.5",
-        prompt=prompt,
-        size="1536x1024",
-        quality="high",
-        output_format="png",
-        n=1,
-    )
-    return base64.b64decode(result.data[0].b64_json)
+
+    # Hugging Face hosted inference; availability and free quota depend on the model/provider.
+    endpoint = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell"
+    try:
+        response = requests.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {hf_token}", "Accept": "image/png"},
+            json={"inputs": prompt},
+            timeout=180,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Could not reach Hugging Face inference service: {exc}") from exc
+
+    if response.status_code != 200:
+        detail = response.text[:1200]
+        if response.status_code in (401, 403):
+            raise RuntimeError("Hugging Face token is invalid or lacks inference permission. Create a token with inference permissions. Details: " + detail)
+        if response.status_code == 429:
+            raise RuntimeError("Hugging Face rate limit or free credits exhausted. Try later or check your account quota. Details: " + detail)
+        raise RuntimeError(f"Hugging Face image API returned HTTP {response.status_code}: {detail}")
+
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        raise RuntimeError("Hugging Face did not return an image. Response: " + response.text[:800])
+    return response.content
 
 left, right = st.columns(2)
 with left:
@@ -214,13 +228,13 @@ Recommended content and script context:
 Style: {style}.
 Thumbnail text: {thumbnail_text or 'choose a short, punchy 2–5 word phrase relevant to the topic'}.
 Make the focal subject large and readable on mobile, use strong contrast, clear visual hierarchy, intentional negative space, expressive but believable imagery, crisp lighting, polished creator-economy art direction, and a clean background. Avoid clutter, tiny text, logos/watermarks, fake UI, fabricated statistics, and misleading claims. Keep all text inside safe margins. The final image should look like a clickable but honest YouTube thumbnail. Landscape 16:9, no borders."""
-    if st.button("🖼️ Generate AI thumbnail", type="primary", disabled=not openai_key):
+    if st.button("🖼️ Generate AI thumbnail", type="primary", disabled=not hf_token):
         try:
-            with st.spinner("Generating thumbnail with OpenAI Images API..."):
+            with st.spinner("Generating thumbnail with Hugging Face..."):
                 st.session_state.thumbnail_bytes = generate_thumbnail(thumbnail_prompt)
             st.success("Thumbnail generated.")
         except Exception as e:
-            st.error(f"Thumbnail generation failed. OpenAI API credits/billing, model access and quota are separate from ChatGPT subscription: {e}")
+            st.error(f"Thumbnail generation failed. Check your Hugging Face token, model availability and free quota: {e}")
 
     if st.session_state.thumbnail_bytes:
         st.subheader("Generated thumbnail")
@@ -234,12 +248,12 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
 
 if not gemini_key:
     st.info("Add a Gemini API key to generate scripts. This avoids using OpenAI API credits for script writing.")
-if not openai_key:
-    st.info("OpenAI API key is only for AI thumbnail generation. Script writing works with Gemini.")
+if not hf_token:
+    st.info("Add a Hugging Face token for AI thumbnails. Script writing works with Gemini and does not need OpenAI credits.")
 if not yt_key:
     st.info("YouTube live research is optional. Add a YouTube Data API key to search public videos and retrieve available public statistics.")
 
 st.divider()
 st.subheader("Before publishing")
 st.write("Review all facts, titles and claims. Use YouTube Studio audience analytics for your own best publishing times. This app only creates drafts and images; it never uploads or publishes videos.")
-st.caption("Public video data is not private competitor analytics. API quotas, model access, and charges apply.")
+st.caption("Public video data is not private competitor analytics. Provider quotas and model availability apply; free image generation is not guaranteed.")
