@@ -354,6 +354,9 @@ if st.session_state.content_package:
         return rendered
 
     sections = parse_content_sections(st.session_state.content_package)
+    # If the model response has no numbered headings, display the whole response as one readable workflow node.
+    if not sections or (len(sections) == 1 and not compact_node_body(sections[0][1])):
+        sections = [("Generated content", st.session_state.content_package.strip())]
     st.markdown("""
     <style>
     .wf-head{border:1px solid #2a4266;border-radius:18px;padding:20px 23px;background:linear-gradient(110deg,#14213a,#101827 65%,#16343d);margin:10px 0 20px}
@@ -394,8 +397,8 @@ if st.session_state.content_package:
         if not body_lines:
             body_lines = ["Details are included in the downloadable full content package."]
         # Keep the node scannable; the full original package remains downloadable.
-        preview_lines = body_lines[:8]
-        list_html = "".join(f"<li>{html.escape(line[:260])}</li>" for line in preview_lines)
+        preview_lines = body_lines[:12]
+        list_html = "".join(f"<li>{html.escape(line[:420])}</li>" for line in preview_lines)
         if len(body_lines) > len(preview_lines):
             list_html += f"<li><em>{len(body_lines) - len(preview_lines)} more details in the downloadable package</em></li>"
         node_class = "wf-node wf-output" if ("thumbnail" in title_safe.lower() or "calendar" in title_safe.lower()) else "wf-node"
@@ -403,6 +406,8 @@ if st.session_state.content_package:
             f'<div class="wf-canvas"><div class="{node_class}"><div class="wf-node-head"><div class="wf-number">{node_num:02d}</div><div class="wf-node-title">{title_safe}</div></div><div class="wf-node-text"><ul>{list_html}</ul></div></div></div>',
             unsafe_allow_html=True,
         )
+        with st.expander("Open full section", expanded=False):
+            st.markdown(body)
         if idx < len(sections) - 1:
             st.markdown('<div class="wf-connector">│<br>↓</div>', unsafe_allow_html=True)
 
@@ -421,11 +426,14 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             st.success("Thumbnail generated automatically.")
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
-            st.warning(f"Gemini image generation was unavailable: {e}")
+            # Keep provider quota details out of the main content area; the in-app fallback is automatic.
             with st.spinner("Creating a designed thumbnail locally inside Kratos..."):
                 st.session_state.thumbnail_bytes = create_designed_thumbnail(
                     topic, thumbnail_text, style
                 )
+            st.info("Gemini image quota is unavailable, so Kratos created a designed thumbnail locally instead.")
+            with st.expander("Why wasn't the AI image generated?"):
+                st.caption(str(e)[:1400])
             st.success("Thumbnail created inside Kratos. No other website needed.")
 
     if st.session_state.thumbnail_bytes:
