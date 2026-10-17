@@ -346,18 +346,18 @@ if st.session_state.content_package:
     # Split the generated Markdown into numbered sections and render each section
     # in its own card instead of one long, plain document.
     import re
-    sections = re.split(r"(?m)^(?=\\s*\\d+\\.\\s+)", st.session_state.content_package.strip())
+    sections = re.split(r"(?m)^(?=\s*\d+\.\s+)", st.session_state.content_package.strip())
     rendered = 0
     for section in sections:
         section = section.strip()
         if not section:
             continue
         first_line = section.splitlines()[0].strip()
-        match = re.match(r"^(\\d+)\\.\\s+(.+)$", first_line)
+        match = re.match(r"^(\d+)\.\s+(.+)$", first_line)
         if match:
             number = int(match.group(1))
             title = re.sub(r"[*#]", "", match.group(2)).strip()
-            body = "\\n".join(section.splitlines()[1:]).strip()
+            body = "\n".join(section.splitlines()[1:]).strip()
         else:
             number = rendered + 1
             title = re.sub(r"[*#]", "", first_line).strip()[:90] or f"Section {number}"
