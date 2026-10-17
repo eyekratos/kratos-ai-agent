@@ -3,13 +3,14 @@ import base64
 from datetime import datetime, timezone
 
 import streamlit as st
-from openai import OpenAI
+from google import genai
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from openai import OpenAI
 
 st.set_page_config(page_title="Kratos YouTube Studio", page_icon="🎬", layout="wide")
 st.title("🎬 Kratos — YouTube Studio")
-st.caption("Research videos • write scripts • generate AI thumbnails • download your content — no auto-posting")
+st.caption("Research videos • write scripts with Gemini • generate AI thumbnails with OpenAI • no auto-posting")
 
 def secret_or_env(name):
     try:
@@ -19,21 +20,27 @@ def secret_or_env(name):
 
 with st.sidebar:
     st.header("API setup")
+    gemini_key = st.text_input(
+        "Gemini API key (script writing)",
+        value=secret_or_env("GEMINI_API_KEY"),
+        type="password",
+        help="Used to generate scripts and content packages.",
+    )
     openai_key = st.text_input(
-        "OpenAI API key (script + thumbnail)",
+        "OpenAI API key (thumbnail only)",
         value=secret_or_env("OPENAI_API_KEY"),
         type="password",
-        help="OpenAI API billing is separate from a ChatGPT subscription.",
+        help="OpenAI image generation needs API access and available API credits. ChatGPT subscription is separate.",
     )
     yt_key = st.text_input(
         "YouTube Data API key (live search)",
         value=secret_or_env("YOUTUBE_API_KEY"),
         type="password",
-        help="Optional. Without it, you can still write scripts and generate thumbnails.",
+        help="Optional. Adds live public YouTube search and available statistics.",
     )
     region = st.selectbox("Audience country", ["IN", "US", "GB", "CA", "AU"], index=0)
     language = st.selectbox("Script language", ["Hinglish", "Hindi", "English"])
-    st.caption("Never commit API keys to GitHub. API usage may incur charges.")
+    st.caption("Never commit API keys to GitHub. Check each provider's current quotas and pricing.")
 
 topic = st.text_input("Video topic / niche", placeholder="e.g. 5 AI tools that save time")
 competitors = st.text_input("Competitor channel names (optional)", placeholder="Creator A, Creator B")
@@ -44,24 +51,18 @@ with c2:
     fmt = st.selectbox("Video format", ["YouTube Shorts", "Long-form", "Both"], index=2)
 with c3:
     duration = st.selectbox("Target duration", ["30–45 seconds", "60 seconds", "5–8 minutes", "8–12 minutes"], index=2)
-
 style = st.selectbox(
     "Thumbnail style",
     ["Cinematic high contrast", "Clean tech editorial", "Dark luxury", "Bright creator style", "Minimal and premium"],
 )
 thumbnail_text = st.text_input("Thumbnail text (optional)", placeholder="Leave blank to let the AI decide")
+
 if "research" not in st.session_state:
     st.session_state.research = []
 if "content_package" not in st.session_state:
     st.session_state.content_package = ""
 if "thumbnail_bytes" not in st.session_state:
     st.session_state.thumbnail_bytes = None
-
-def get_openai_client():
-    if not openai_key:
-        st.error("Add your OpenAI API key in the sidebar or Streamlit Secrets.")
-        st.stop()
-    return OpenAI(api_key=openai_key)
 
 def youtube_client():
     if not yt_key:
@@ -98,15 +99,21 @@ def search_videos(query, max_results=20):
     return sorted(rows, key=lambda x: x["views_per_day"], reverse=True)
 
 def generate_script(prompt):
-    client = get_openai_client()
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt,
+    if not gemini_key:
+        st.error("Add your Gemini API key in the sidebar or Streamlit Secrets to generate scripts.")
+        st.stop()
+    client = genai.Client(api_key=gemini_key)
+    response = client.models.generate_content(
+        model="gemini-3.8-flash",
+        contents=prompt,
     )
-    return response.output_text or "No text returned."
+    return response.text or "No text returned."
 
 def generate_thumbnail(prompt):
-    client = get_openai_client()
+    if not openai_key:
+        st.error("Add an OpenAI API key to generate the thumbnail. Script generation does not require OpenAI credits.")
+        st.stop()
+    client = OpenAI(api_key=openai_key)
     result = client.images.generate(
         model="gpt-image-1.5",
         prompt=prompt,
@@ -128,7 +135,7 @@ with right:
     script_clicked = st.button(
         "✍️ Generate script + content package",
         type="primary",
-        disabled=not topic.strip() or not openai_key,
+        disabled=not topic.strip() or not gemini_key,
         use_container_width=True,
     )
 
@@ -184,11 +191,11 @@ Create a complete content package in well-formatted Markdown:
 8. At the end add a clearly labelled 'AI THUMBNAIL PROMPT' with a detailed 16:9 thumbnail concept for the recommended idea. Visual style: {style}. Thumbnail text preference: {thumbnail_text or 'choose 2–5 short readable words'}.
 Do not upload or publish anything."""
     try:
-        with st.spinner("Writing original script and content package with OpenAI..."):
+        with st.spinner("Writing script and content package with Gemini..."):
             st.session_state.content_package = generate_script(prompt)
             st.session_state.thumbnail_bytes = None
     except Exception as e:
-        st.error(f"Script generation failed: {e}")
+        st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
 
 if st.session_state.content_package:
     st.subheader("Your script & content package")
@@ -209,11 +216,11 @@ Thumbnail text: {thumbnail_text or 'choose a short, punchy 2–5 word phrase rel
 Make the focal subject large and readable on mobile, use strong contrast, clear visual hierarchy, intentional negative space, expressive but believable imagery, crisp lighting, polished creator-economy art direction, and a clean background. Avoid clutter, tiny text, logos/watermarks, fake UI, fabricated statistics, and misleading claims. Keep all text inside safe margins. The final image should look like a clickable but honest YouTube thumbnail. Landscape 16:9, no borders."""
     if st.button("🖼️ Generate AI thumbnail", type="primary", disabled=not openai_key):
         try:
-            with st.spinner("Generating thumbnail with OpenAI Images API... this can take a little while."):
+            with st.spinner("Generating thumbnail with OpenAI Images API..."):
                 st.session_state.thumbnail_bytes = generate_thumbnail(thumbnail_prompt)
             st.success("Thumbnail generated.")
         except Exception as e:
-            st.error(f"Thumbnail generation failed. Check API access, billing, model access and quota: {e}")
+            st.error(f"Thumbnail generation failed. OpenAI API credits/billing, model access and quota are separate from ChatGPT subscription: {e}")
 
     if st.session_state.thumbnail_bytes:
         st.subheader("Generated thumbnail")
@@ -225,8 +232,10 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             mime="image/png",
         )
 
+if not gemini_key:
+    st.info("Add a Gemini API key to generate scripts. This avoids using OpenAI API credits for script writing.")
 if not openai_key:
-    st.info("Add an OpenAI API key to generate scripts and thumbnails. OpenAI API billing is separate from ChatGPT Plus/Go/Pro subscriptions.")
+    st.info("OpenAI API key is only for AI thumbnail generation. Script writing works with Gemini.")
 if not yt_key:
     st.info("YouTube live research is optional. Add a YouTube Data API key to search public videos and retrieve available public statistics.")
 
