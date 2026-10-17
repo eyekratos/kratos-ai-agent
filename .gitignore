@@ -2,9 +2,4 @@
 __pycache__/
 *.py[cod]
 .env
-.env.*
-!.env.example
-token.json
-client_secret*.json
-output/*
-!output/.gitkeep
+.streamlit/secrets.toml
