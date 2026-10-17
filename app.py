@@ -305,111 +305,14 @@ Do not upload or publish anything."""
         st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
 
 if st.session_state.content_package:
-    import re
-    import html
-
-    def parse_content_sections(markdown_text):
-        """Split generated Markdown into workflow nodes, keeping all text with its section."""
-        lines = markdown_text.strip().splitlines()
-        sections = []
-        current_title = "Content overview"
-        current_lines = []
-        for line in lines:
-            match = re.match(r"^\\s*(?:#{1,4}\\s*)?(\\d{1,2})[.)]\\s+(.+)$", line.strip())
-            is_ai_prompt = line.strip().lower().startswith("ai thumbnail prompt")
-            if match and current_lines:
-                sections.append((current_title, "\\n".join(current_lines).strip()))
-                current_title = match.group(2).strip().strip("*#")
-                current_lines = []
-            elif match:
-                current_title = match.group(2).strip().strip("*#")
-            elif is_ai_prompt and current_lines:
-                sections.append((current_title, "\\n".join(current_lines).strip()))
-                current_title = "AI Thumbnail Prompt"
-                current_lines = []
-            current_lines.append(line)
-        if current_lines:
-            sections.append((current_title, "\\n".join(current_lines).strip()))
-        # Merge the initial heading-only fragment into the first meaningful section.
-        cleaned = []
-        for title, body in sections:
-            if not body:
-                continue
-            cleaned.append((title, body))
-        return cleaned
-
-    def compact_node_body(markdown_text):
-        """Render Markdown as small, readable workflow bullets rather than one long paragraph."""
-        rendered = []
-        for raw in markdown_text.splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            line = re.sub(r"^[-*+]\\s+", "", line)
-            line = re.sub(r"^\\d+[.)]\\s+", "", line)
-            line = re.sub(r"\\*\\*(.*?)\\*\\*", r"\\1", line)
-            line = re.sub(r"\\*(.*?)\\*", r"\\1", line)
-            if line:
-                rendered.append(line)
-        return rendered
-
-    sections = parse_content_sections(st.session_state.content_package)
-    # If the model response has no numbered headings, display the whole response as one readable workflow node.
-    if not sections or (len(sections) == 1 and not compact_node_body(sections[0][1])):
-        sections = [("Generated content", st.session_state.content_package.strip())]
-    st.markdown("""
-    <style>
-    .wf-head{border:1px solid #2a4266;border-radius:18px;padding:20px 23px;background:linear-gradient(110deg,#14213a,#101827 65%,#16343d);margin:10px 0 20px}
-    .wf-kicker{font-size:11px;letter-spacing:2.5px;font-weight:800;color:#7cb6ff}
-    .wf-title{font-size:25px;font-weight:850;color:#f7faff;margin-top:6px}
-    .wf-sub{font-size:13px;color:#a7bad5;margin-top:5px}
-    .wf-canvas{border:1px solid #263b57;border-radius:18px;padding:18px;background:radial-gradient(circle at 20% 0%,#162741 0,#0b1220 55%);margin-bottom:20px}
-    .wf-node{border:1px solid #385477;border-radius:14px;background:linear-gradient(145deg,#15243a,#101827);padding:14px 16px;color:#e8f0ff;min-height:118px}
-    .wf-node-head{display:flex;align-items:center;gap:10px;margin-bottom:9px}
-    .wf-number{width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#16b8a6);font-weight:900;color:#fff;font-size:12px;flex-shrink:0}
-    .wf-node-title{font-weight:800;font-size:15px;color:#fff}
-    .wf-node-text{font-size:12px;line-height:1.6;color:#b7c7df}
-    .wf-connector{height:30px;display:flex;align-items:center;justify-content:center;color:#39d5c5;font-size:22px;font-weight:900;letter-spacing:3px}
-    .wf-node ul{padding-left:17px;margin:8px 0 0}.wf-node li{margin:5px 0}
-    .wf-output{border-color:#287e78;background:linear-gradient(145deg,#12332f,#101827)}
-    .wf-chip{display:inline-block;border:1px solid #2b5266;border-radius:99px;padding:4px 8px;font-size:10px;letter-spacing:.7px;color:#78ead7;margin:0 5px 5px 0}
-    </style>
-    <div class="wf-head">
-      <div class="wf-kicker">KRATOS / AI WORKFLOW</div>
-      <div class="wf-title">Your YouTube Content Pipeline</div>
-      <div class="wf-sub">Follow the connected steps. Every stage shows the key information and deliverable.</div>
-      <div style="margin-top:12px"><span class="wf-chip">01 RESEARCH</span><span class="wf-chip">02 IDEAS</span><span class="wf-chip">03 SCRIPT</span><span class="wf-chip">04 PUBLISHING KIT</span><span class="wf-chip">05 THUMBNAIL</span></div>
-    </div>
-    """, unsafe_allow_html=True)
-
+    st.subheader("Your script & content package")
+    st.markdown(st.session_state.content_package)
     st.download_button(
-        "⬇️ Download full content package (.md)",
+        "⬇️ Download script & content package",
         st.session_state.content_package,
         file_name="kratos_content_package.md",
         mime="text/markdown",
     )
-
-    # Display every generated section as a workflow node, connected vertically.
-    for idx, (section_title, body) in enumerate(sections):
-        node_num = idx + 1
-        title_safe = html.escape(re.sub(r"^\\d+[.)]\\s*", "", section_title).strip())
-        body_lines = compact_node_body(body)
-        if not body_lines:
-            body_lines = ["Details are included in the downloadable full content package."]
-        # Keep the node scannable; the full original package remains downloadable.
-        preview_lines = body_lines[:12]
-        list_html = "".join(f"<li>{html.escape(line[:420])}</li>" for line in preview_lines)
-        if len(body_lines) > len(preview_lines):
-            list_html += f"<li><em>{len(body_lines) - len(preview_lines)} more details in the downloadable package</em></li>"
-        node_class = "wf-node wf-output" if ("thumbnail" in title_safe.lower() or "calendar" in title_safe.lower()) else "wf-node"
-        st.markdown(
-            f'<div class="wf-canvas"><div class="{node_class}"><div class="wf-node-head"><div class="wf-number">{node_num:02d}</div><div class="wf-node-title">{title_safe}</div></div><div class="wf-node-text"><ul>{list_html}</ul></div></div></div>',
-            unsafe_allow_html=True,
-        )
-        with st.expander("Open full section", expanded=False):
-            st.markdown(body)
-        if idx < len(sections) - 1:
-            st.markdown('<div class="wf-connector">│<br>↓</div>', unsafe_allow_html=True)
 
     thumbnail_prompt = f"""Create a professional YouTube thumbnail, wide 16:9 composition, for this video topic: {topic}.
 Recommended content and script context:
@@ -426,7 +329,6 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             st.success("Thumbnail generated automatically.")
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
-            # Keep provider quota details out of the main content area; the in-app fallback is automatic.
             with st.spinner("Creating a designed thumbnail locally inside Kratos..."):
                 st.session_state.thumbnail_bytes = create_designed_thumbnail(
                     topic, thumbnail_text, style
