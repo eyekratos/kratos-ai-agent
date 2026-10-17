@@ -197,6 +197,7 @@ Do not upload or publish anything."""
         with st.spinner("Writing script and content package with Gemini..."):
             st.session_state.content_package = generate_script(prompt)
             st.session_state.thumbnail_bytes = None
+            st.session_state.thumbnail_autogenerate_pending = True
     except Exception as e:
         st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
 
@@ -217,12 +218,16 @@ Recommended content and script context:
 Style: {style}.
 Thumbnail text: {thumbnail_text or 'choose a short, punchy 2–5 word phrase relevant to the topic'}.
 Make the focal subject large and readable on mobile, use strong contrast, clear visual hierarchy, intentional negative space, expressive but believable imagery, crisp lighting, polished creator-economy art direction, and a clean background. Avoid clutter, tiny text, logos/watermarks, fake UI, fabricated statistics, and misleading claims. Keep all text inside safe margins. The final image should look like a clickable but honest YouTube thumbnail. Landscape 16:9, no borders."""
-    if st.button("🖼️ Generate AI thumbnail with Gemini", type="primary", disabled=not gemini_key):
+    # Generate the thumbnail automatically after a new content package is created.
+    # Session-state guard prevents a new image request on every Streamlit rerun.
+    if not st.session_state.thumbnail_bytes and st.session_state.get("thumbnail_autogenerate_pending", False):
         try:
-            with st.spinner("Generating thumbnail with Gemini image model..."):
+            with st.spinner("Automatically generating thumbnail with Gemini..."):
                 st.session_state.thumbnail_bytes = generate_thumbnail(thumbnail_prompt)
-            st.success("Thumbnail generated.")
+            st.session_state.thumbnail_autogenerate_pending = False
+            st.success("Thumbnail generated automatically.")
         except Exception as e:
+            st.session_state.thumbnail_autogenerate_pending = False
             st.error(f"Gemini thumbnail generation failed. Check image-model access, API billing and quota: {e}")
 
     if st.session_state.thumbnail_bytes:
