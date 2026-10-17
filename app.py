@@ -112,7 +112,6 @@ def generate_thumbnail(prompt):
         contents=prompt,
         config={
             "response_modalities": ["IMAGE"],
-            "response_format": {"image": {"aspect_ratio": "16:9", "image_size": "1K"}},
         },
     )
 
