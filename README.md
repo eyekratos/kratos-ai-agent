@@ -1,44 +1,42 @@
-# Kratos AI Agent — YouTube Script MVP
+# Kratos — YouTube Scout
 
-A beginner-friendly first milestone for a cloud-run YouTube workflow:
-- Generate a YouTube script from a topic.
-- Run manually or on a daily GitHub Actions schedule.
-- Download the script as a GitHub Actions artifact.
-- Keep API keys in GitHub Secrets, never in source code.
+A Streamlit MVP for YouTube competitor discovery, public video metadata research, original script generation, title/thumbnail concepts, and a testable publishing plan.
 
-## 1. Create the repository
+## Features
+- Searches public YouTube videos for a niche/topic using YouTube Data API v3.
+- Ranks discovered videos by views/day as a rough freshness/velocity signal (not a true virality prediction).
+- Uses Gemini to summarize topic/title patterns and produce original scripts and a 2-week test plan.
+- Exports the generated strategy as Markdown.
 
-Create a **private** GitHub repository named `kratos-ai-agent`, then upload all files in this folder while preserving the directory structure.
-
-## 2. Add the Gemini API key
-
-Create a key in Google AI Studio: https://aistudio.google.com/
-
-In GitHub, open:
-`Settings → Secrets and variables → Actions → New repository secret`
-
-Name it `GEMINI_API_KEY` and paste the key as the value. Do not put the key in code or commit it.
-
-## 3. Run a workflow
-
-Open `Actions → YouTube Script Pipeline → Run workflow`, enter a topic, then run it. On success, download the `youtube-script` artifact from the workflow run.
-
-The workflow is also scheduled daily for 7:00 PM India time (GitHub may delay scheduled runs).
-
-## 4. Run locally (optional)
-
-Windows PowerShell:
-
+## Local run (Windows)
+1. Install Python 3.11+.
+2. Create API keys:
+   - YouTube: Google Cloud Console → enable **YouTube Data API v3** → create API key.
+   - Gemini: Google AI Studio → create API key.
+3. In PowerShell:
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:GEMINI_API_KEY="YOUR_API_KEY"
-python -m app.main --topic "Why compounding matters"
+$env:YOUTUBE_API_KEY="YOUR_YOUTUBE_KEY"
+$env:GEMINI_API_KEY="YOUR_GEMINI_KEY"
+streamlit run app.py
 ```
+4. Open the local URL Streamlit prints.
 
-The script is saved to `output/script.txt`.
+## Deploy to Streamlit Community Cloud
+1. Push this repository to GitHub.
+2. Go to https://share.streamlit.io/ and sign in with GitHub.
+3. Choose repository `eyekratos/kratos-ai-agent`, branch `main`, main file `app.py`.
+4. In app settings → **Secrets**, add:
+```toml
+YOUTUBE_API_KEY = "your-youtube-key"
+GEMINI_API_KEY = "your-gemini-key"
+```
+5. Deploy. Do not commit API keys to GitHub.
 
-## Current scope
-
-This is the first working milestone only. It does **not** yet generate voice, render full videos, create thumbnails, upload to YouTube, or provide phone control. Those need separate modules, cloud storage, OAuth/API configuration, and additional deployment steps. Free API/compute quotas and model availability can change.
+## Notes and limits
+- YouTube search results and API quota limits may vary. Views/day is a simple heuristic, not a normalized performance measure.
+- This MVP does not upload videos, access private channel analytics, or promise viral results.
+- For best posting-time recommendations, use your own YouTube Studio Audience report. Suggested times are hypotheses to test.
+- Competitor content is analyzed for patterns only. Do not copy scripts, thumbnails, or copyrighted footage.
