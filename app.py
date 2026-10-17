@@ -236,7 +236,7 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
         )
 
 if not gemini_key:
-    st.info("Add a Gemini API key to generate scripts. This avoids using OpenAI API credits for script writing.")
+    st.info("Add a Gemini API key to generate scripts and thumbnails.")
 st.info("Gemini image generation uses the Gemini API. Image-model access and billing may differ from text generation; check Google AI Studio pricing and quota.")
 if not yt_key:
     st.info("YouTube live research is optional. Add a YouTube Data API key to search public videos and retrieve available public statistics.")
