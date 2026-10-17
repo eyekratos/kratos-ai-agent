@@ -56,6 +56,8 @@ if "content_package" not in st.session_state:
     st.session_state.content_package = ""
 if "thumbnail_bytes" not in st.session_state:
     st.session_state.thumbnail_bytes = None
+if "thumbnail_prompt_fallback" not in st.session_state:
+    st.session_state.thumbnail_prompt_fallback = ""
 
 def youtube_client():
     if not yt_key:
@@ -196,6 +198,7 @@ Do not upload or publish anything."""
         with st.spinner("Writing script and content package with Gemini..."):
             st.session_state.content_package = generate_script(prompt)
             st.session_state.thumbnail_bytes = None
+            st.session_state.thumbnail_prompt_fallback = ""
             st.session_state.thumbnail_autogenerate_pending = True
     except Exception as e:
         st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
@@ -227,7 +230,9 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             st.success("Thumbnail generated automatically.")
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
-            st.error(f"Gemini thumbnail generation failed. Check image-model access, API billing and quota: {e}")
+            st.session_state.thumbnail_prompt_fallback = thumbnail_prompt
+            st.warning(f"Gemini could not create the image (often because image-model quota is unavailable): {e}")
+            st.info("You can still create the thumbnail in a browser image generator. Copy or download the prompt below, open the generator, paste it, and choose a 16:9 landscape image.")
 
     if st.session_state.thumbnail_bytes:
         st.subheader("Generated thumbnail")
@@ -238,6 +243,18 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             file_name="kratos_youtube_thumbnail.png",
             mime="image/png",
         )
+
+    if st.session_state.thumbnail_prompt_fallback:
+        st.subheader("Free thumbnail fallback")
+        st.text_area("Ready-to-use AI thumbnail prompt", value=st.session_state.thumbnail_prompt_fallback, height=220)
+        st.download_button(
+            "⬇️ Download thumbnail prompt",
+            data=st.session_state.thumbnail_prompt_fallback,
+            file_name="kratos_thumbnail_prompt.txt",
+            mime="text/plain",
+        )
+        st.link_button("🎨 Open FreeImgGen", "https://freeimggen.com/", use_container_width=True)
+        st.caption("This is a separate browser service. Paste the prompt there; free limits and terms may change.")
 
 if not gemini_key:
     st.info("Add a Gemini API key to generate scripts and thumbnails.")
