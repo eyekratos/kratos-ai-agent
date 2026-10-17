@@ -10,6 +10,7 @@ from googleapiclient.errors import HttpError
 st.set_page_config(page_title="Kratos YouTube Studio", page_icon="🎬", layout="wide")
 st.title("🎬 Kratos — YouTube Studio")
 st.caption("Research videos • write scripts with Gemini • generate AI thumbnails with Hugging Face • no auto-posting")
+st.caption("Build: HF-thumbnail-fix-2026-10-17 | If you still see an OpenAI API error, the deployed app has not loaded this build yet.")
 
 def secret_or_env(name):
     try:
