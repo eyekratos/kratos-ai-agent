@@ -71,7 +71,7 @@ def ask_gemini(prompt):
         st.error("Add your Gemini API key in the sidebar or Streamlit Secrets.")
         st.stop()
     client = genai.Client(api_key=gemini_key)
-    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+    response = client.models.generate_content(model="gemini-3.8-flash", contents=prompt)
     return response.text or "No text returned."
 
 topic = st.text_input("Your niche / topic", placeholder="e.g. AI tools, finance, smartphone reviews")
