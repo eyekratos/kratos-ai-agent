@@ -305,14 +305,71 @@ Do not upload or publish anything."""
         st.error(f"Script generation failed in Gemini. Check Gemini API key, model access and quota: {e}")
 
 if st.session_state.content_package:
-    st.subheader("Your script & content package")
-    st.markdown(st.session_state.content_package)
+    st.markdown("""
+    <style>
+    .kr-content-wrap{max-width:100%;margin:10px 0 26px;color:#eaf1ff}
+    .kr-content-head{padding:22px 24px;border:1px solid #263e62;border-radius:18px;background:linear-gradient(120deg,#14233d,#101827 65%,#172c40);margin-bottom:18px}
+    .kr-content-kicker{font-size:11px;letter-spacing:2.5px;color:#7eb4ff;font-weight:800;text-transform:uppercase}
+    .kr-content-title{font-size:25px;font-weight:850;color:#f8fbff;margin-top:7px}
+    .kr-content-sub{font-size:13px;color:#a8bad5;margin-top:5px}
+    .kr-card{border:1px solid #263b59;border-radius:16px;overflow:hidden;margin:14px 0;background:linear-gradient(145deg,#111c2e,#0c1321);box-shadow:0 8px 24px rgba(0,0,0,.15)}
+    .kr-card-top{display:flex;align-items:center;gap:12px;padding:15px 18px;background:linear-gradient(90deg,rgba(54,101,178,.19),rgba(23,184,164,.06));border-bottom:1px solid #26364f}
+    .kr-card-num{display:flex;align-items:center;justify-content:center;min-width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#3976f6,#20cbb4);color:white;font-weight:900;font-size:12px}
+    .kr-card-title{font-size:17px;font-weight:800;color:#f4f7ff}
+    .kr-card-body{padding:18px 20px 20px;line-height:1.7;color:#d6e0f2}
+    .kr-card-body h1,.kr-card-body h2,.kr-card-body h3{color:#f6f9ff;margin-top:18px}
+    .kr-card-body h2{font-size:20px;border-bottom:1px solid #2a3a53;padding-bottom:9px}
+    .kr-card-body h3{font-size:16px}
+    .kr-card-body p{margin:8px 0}
+    .kr-card-body li{margin:7px 0}
+    .kr-card-body strong{color:#fff}
+    .kr-card-body blockquote{border-left:3px solid #39d5c5;background:#14243a;padding:10px 14px;border-radius:0 10px 10px 0}
+    .kr-card-body code{color:#83e9d9;background:#17253b;padding:2px 5px;border-radius:5px}
+    .kr-card-body hr{border-color:#2b3b54}
+    .kr-content-footer{padding:12px 16px;color:#93a9c8;font-size:12px;border-top:1px solid #253650}
+    @media(max-width:650px){.kr-content-title{font-size:21px}.kr-card-body{padding:14px}}
+    </style>
+    <div class="kr-content-wrap">
+      <div class="kr-content-head">
+        <div class="kr-content-kicker">KRATOS / CREATOR WORKSPACE</div>
+        <div class="kr-content-title">Your script &amp; content package</div>
+        <div class="kr-content-sub">Research, ideas, script, publishing assets — organized into clear sections.</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.download_button(
         "⬇️ Download script & content package",
         st.session_state.content_package,
         file_name="kratos_content_package.md",
         mime="text/markdown",
     )
+    # Split the generated Markdown into numbered sections and render each section
+    # in its own card instead of one long, plain document.
+    import re
+    sections = re.split(r"(?m)^(?=\\s*\\d+\\.\\s+)", st.session_state.content_package.strip())
+    rendered = 0
+    for section in sections:
+        section = section.strip()
+        if not section:
+            continue
+        first_line = section.splitlines()[0].strip()
+        match = re.match(r"^(\\d+)\\.\\s+(.+)$", first_line)
+        if match:
+            number = int(match.group(1))
+            title = re.sub(r"[*#]", "", match.group(2)).strip()
+            body = "\\n".join(section.splitlines()[1:]).strip()
+        else:
+            number = rendered + 1
+            title = re.sub(r"[*#]", "", first_line).strip()[:90] or f"Section {number}"
+            body = section
+        rendered += 1
+        st.markdown(
+            f'<div class="kr-card"><div class="kr-card-top"><div class="kr-card-num">{number:02d}</div><div class="kr-card-title">{title}</div></div></div>',
+            unsafe_allow_html=True,
+        )
+        with st.container(border=True):
+            st.markdown(body)
+        st.markdown('<div class="kr-content-footer">KRATOS CREATOR LAB  •  CONTENT SECTION</div>', unsafe_allow_html=True)
 
     thumbnail_prompt = f"""Create a professional YouTube thumbnail, wide 16:9 composition, for this video topic: {topic}.
 Recommended content and script context:
@@ -321,8 +378,6 @@ Recommended content and script context:
 Style: {style}.
 Thumbnail text: {thumbnail_text or 'choose a short, punchy 2–5 word phrase relevant to the topic'}.
 Make the focal subject large and readable on mobile, use strong contrast, clear visual hierarchy, intentional negative space, expressive but believable imagery, crisp lighting, polished creator-economy art direction, and a clean background. Avoid clutter, tiny text, logos/watermarks, fake UI, fabricated statistics, and misleading claims. Keep all text inside safe margins. The final image should look like a clickable but honest YouTube thumbnail. Landscape 16:9, no borders."""
-    # Generate the thumbnail automatically after a new content package is created.
-    # Session-state guard prevents a new image request on every Streamlit rerun.
     if not st.session_state.thumbnail_bytes and st.session_state.get("thumbnail_autogenerate_pending", False):
         try:
             with st.spinner("Automatically generating thumbnail with Gemini..."):
@@ -331,7 +386,6 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             st.success("Thumbnail generated automatically.")
         except Exception as e:
             st.session_state.thumbnail_autogenerate_pending = False
-            st.session_state.thumbnail_prompt_fallback = thumbnail_prompt
             st.warning(f"Gemini image generation was unavailable: {e}")
             with st.spinner("Creating a polished thumbnail locally inside Kratos..."):
                 st.session_state.thumbnail_bytes = create_designed_thumbnail(
@@ -348,7 +402,6 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
             file_name="kratos_youtube_thumbnail.png",
             mime="image/png",
         )
-
 
 if not gemini_key:
     st.info("Add a Gemini API key to generate scripts and thumbnails.")
