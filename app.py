@@ -263,10 +263,21 @@ if rows:
     )
 
 if script_clicked:
+    # If the user has configured the owner's YouTube API key but hasn't clicked Research first,
+    # fetch public results automatically so the script can use real video evidence.
+    if yt_key and not st.session_state.research:
+        try:
+            with st.spinner("Fetching live YouTube results to ground your content package..."):
+                q = topic + (" " + competitors if competitors.strip() else "")
+                st.session_state.research = search_videos(q, min(count, 20))
+            rows = st.session_state.research
+        except Exception as research_error:
+            st.warning("Live YouTube research could not run. The script will be clearly labelled as idea generation, not live trend analysis.")
     evidence = "\n".join(
         f"- {x['title']} | channel={x['channel']} | views={x['views']} | views/day={x['views_per_day']} | published={x['published']} | url={x['url']}"
         for x in rows[:15]
-    ) or "No live YouTube results supplied. Do not invent current trends, video stats, or competitor findings."
+    ) or "LIVE DATA UNAVAILABLE: no YouTube API results were supplied. Do not invent current trends, video stats, search volume, or competitor findings. State this limitation briefly once."
+    data_status = "Live public YouTube video results are included below. Refer to actual titles and metrics where relevant; do not claim search-volume data or private competitor analytics." if rows else "No live public YouTube results are available for this run. Present this as creative ideation based on general audience patterns, and include only one short limitation note."
     prompt = f"""You are a careful YouTube content strategist and scriptwriter.
 Topic: {topic}
 Competitor hints: {competitors or 'not provided'}
@@ -275,7 +286,8 @@ Target duration: {duration}
 Script language: {language}
 Audience region: {region}
 
-Use the public YouTube data below only as imperfect evidence. If no live results are supplied, clearly say this is ideation, not live trend research. Never invent metrics or promise virality. Create original scripts; do not copy other creators.
+Use this data-status instruction: {data_status}
+Use any public YouTube data below only as imperfect evidence. Never invent metrics or promise virality. Create original scripts; do not copy other creators. Do not repeat a long boilerplate notice; if data is unavailable, use one concise sentence to explain the limitation.
 
 LIVE VIDEO DATA:
 {evidence}
