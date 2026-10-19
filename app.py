@@ -1,4 +1,7 @@
 import os
+import json
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -188,6 +191,110 @@ def search_videos(query, max_results=20):
             "url": "https://www.youtube.com/watch?v=" + v["id"],
         })
     return sorted(rows, key=lambda x: x["views_per_day"], reverse=True)
+
+
+# ---------------- Roblox Shorts Research workspace ----------------
+if "roblox_ideas" not in st.session_state:
+    st.session_state.roblox_ideas = []
+
+st.divider()
+st.header("🎮 Roblox Shorts Research Tool")
+st.caption("A practical research desk for Roblox game discovery, YouTube search intent, competitor examples, and an editable idea tracker.")
+
+with st.expander("Step 1 — Find trending Roblox games", expanded=True):
+    st.markdown("Open the live Roblox charts to check which experiences are currently popular. The charts are the source of truth; this app does not pretend to scrape live rankings.")
+    st.link_button("🎮 Open Roblox Charts", "https://www.roblox.com/charts")
+    st.link_button("📈 Google Trends — Roblox (United States)", "https://trends.google.com/trends/explore?geo=US&q=Roblox")
+    st.link_button("🧩 vidIQ browser extension", "https://vidiq.com/extension/")
+    st.caption("Roblox Charts, Google Trends and vidIQ open in a new tab. Their own free-tier limits and features can change.")
+
+with st.expander("Step 2 — YouTube search suggestions", expanded=True):
+    auto_query = st.text_input("Search phrase", value="roblox", key="roblox_autocomplete_query", help="Try phrases like roblox, roblox shorts, roblox brookhaven, or roblox obby.")
+    if st.button("🔎 Get YouTube autocomplete suggestions", key="roblox_autocomplete_btn", use_container_width=True):
+        try:
+            params = urllib.parse.urlencode({"client": "firefox", "ds": "yt", "q": auto_query.strip() or "roblox"})
+            req = urllib.request.Request(
+                "https://suggestqueries.google.com/complete/search?" + params,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            st.session_state.roblox_autocomplete_results = payload[1] if len(payload) > 1 else []
+        except Exception as err:
+            st.session_state.roblox_autocomplete_results = []
+            st.warning("Autocomplete could not be fetched right now. Open YouTube search and check suggestions manually.")
+            st.link_button("▶️ Open YouTube search", "https://www.youtube.com/results?search_query=" + urllib.parse.quote(auto_query or "roblox"))
+    suggestions = st.session_state.get("roblox_autocomplete_results", [])
+    if suggestions:
+        st.markdown("**Suggested searches**")
+        for suggestion in suggestions[:10]:
+            st.markdown("- " + str(suggestion))
+        st.caption("Autocomplete suggestions are ideas people may search for, not exact search-volume numbers.")
+
+with st.expander("Step 3 — Competitor / popular video research", expanded=True):
+    st.caption("Set Audience country to US in the sidebar for US-focused results. This search uses public YouTube Data API results and sorts them by views per day; it does not guarantee every result is a Short.")
+    roblox_query = st.text_input("Competitor search query", value="Roblox Shorts", key="roblox_competitor_query")
+    roblox_count = st.selectbox("Results to inspect", [10, 20, 30, 50], index=1, key="roblox_competitor_count")
+    if st.button("📊 Find popular Roblox videos", key="roblox_competitor_btn", disabled=not yt_key, use_container_width=True):
+        try:
+            with st.spinner("Searching public YouTube video data..."):
+                st.session_state.roblox_competitor_rows = search_videos(roblox_query, roblox_count)
+        except Exception as err:
+            st.error("Roblox video research failed. Check the owner's YouTube API key and quota.")
+    competitor_rows = st.session_state.get("roblox_competitor_rows", [])
+    if competitor_rows:
+        st.dataframe(
+            competitor_rows,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "url": st.column_config.LinkColumn("Open video"),
+                "views": st.column_config.NumberColumn("Views", format="%d"),
+                "views_per_day": st.column_config.NumberColumn("Views/day", format="%d"),
+            },
+        )
+        st.caption("Review the channel's Shorts tab and sort by Popular manually to confirm which videos are Shorts. Public view counts are not private channel analytics.")
+    elif not yt_key:
+        st.info("The site owner needs to configure YOUTUBE_API_KEY in Streamlit Secrets to enable live YouTube results.")
+
+with st.expander("Step 4 — Idea tracker", expanded=True):
+    with st.form("roblox_idea_form", clear_on_submit=True):
+        i1, i2 = st.columns(2)
+        with i1:
+            idea = st.text_input("Video idea", placeholder="e.g. I tried the hardest Roblox obby")
+            game = st.text_input("Roblox game", placeholder="e.g. DOORS, Brookhaven, obby")
+        with i2:
+            hook = st.text_input("First-second hook", placeholder="e.g. This level looks impossible...")
+            source_views = st.text_input("Reference views / link", placeholder="e.g. 1.2M or video URL")
+        submitted_idea = st.form_submit_button("➕ Add idea to tracker", use_container_width=True)
+    if submitted_idea:
+        if idea.strip():
+            st.session_state.roblox_ideas.append({
+                "Idea": idea.strip(),
+                "Game": game.strip(),
+                "Hook": hook.strip(),
+                "Reference views / link": source_views.strip(),
+                "Status": "To research",
+            })
+            st.success("Idea added to your tracker.")
+        else:
+            st.warning("Enter at least a video idea.")
+    if st.session_state.roblox_ideas:
+        st.session_state.roblox_ideas = st.data_editor(
+            st.session_state.roblox_ideas,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            key="roblox_ideas_editor",
+            column_config={"Status": st.column_config.SelectboxColumn("Status", options=["To research", "Ready to script", "Scripted", "Published"])},
+        )
+        csv_data = "Idea,Game,Hook,Reference views / link,Status\n" + "\n".join(
+            ",".join('"' + str(item.get(k, "")).replace('"', '""') + '"' for k in ["Idea", "Game", "Hook", "Reference views / link", "Status"])
+            for item in st.session_state.roblox_ideas
+        )
+        st.download_button("⬇️ Download idea tracker CSV", csv_data, file_name="roblox_shorts_idea_tracker.csv", mime="text/csv")
+    else:
+        st.info("Your idea tracker is empty. Add your first idea above; you can edit statuses and download the sheet as CSV.")
 
 def generate_script(prompt):
     if not gemini_key:
