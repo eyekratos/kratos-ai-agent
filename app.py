@@ -18,23 +18,18 @@ def secret_or_env(name):
     except Exception:
         return os.getenv(name, "")
 
+# API credentials are read only from server-side Streamlit Secrets or environment variables.
+# Visitors never need to enter keys, and keys are never shown in the public UI.
+gemini_key = secret_or_env("GEMINI_API_KEY")
+yt_key = secret_or_env("YOUTUBE_API_KEY")
+
 with st.sidebar:
-    st.header("API setup")
-    gemini_key = st.text_input(
-        "Gemini API key (script writing)",
-        value=secret_or_env("GEMINI_API_KEY"),
-        type="password",
-        help="Used to generate scripts and content packages.",
-    )
-    yt_key = st.text_input(
-        "YouTube Data API key (live search)",
-        value=secret_or_env("YOUTUBE_API_KEY"),
-        type="password",
-        help="Optional. Adds live public YouTube search and available statistics.",
-    )
+    st.header("Workspace settings")
     region = st.selectbox("Audience country", ["IN", "US", "GB", "CA", "AU"], index=0)
     language = st.selectbox("Script language", ["Hinglish", "Hindi", "English"])
-    st.caption("Never commit API keys to GitHub. Check each provider's current quotas and pricing.")
+    st.caption("API credentials are securely configured by the site owner. Visitors do not need their own keys.")
+    if not yt_key:
+        st.caption("Live YouTube research is currently unavailable; script generation can still work.")
 
 topic = st.text_input("Video topic / niche", placeholder="e.g. 5 AI tools that save time")
 competitors = st.text_input("Competitor channel names (optional)", placeholder="Creator A, Creator B")
@@ -349,10 +344,10 @@ Make the focal subject large and readable on mobile, use strong contrast, clear 
         )
 
 if not gemini_key:
-    st.info("Add a Gemini API key to generate scripts and thumbnails.")
-st.info("Gemini image generation uses the Gemini API. Image-model access and billing may differ from text generation; check Google AI Studio pricing and quota.")
+    st.error("The site owner has not configured the Gemini API key yet. Please try again later.")
+st.caption("This public app uses the site owner’s API quota. The owner is responsible for usage and any provider charges.")
 if not yt_key:
-    st.info("YouTube live research is optional. Add a YouTube Data API key to search public videos and retrieve available public statistics.")
+    st.info("Live YouTube research is disabled until the site owner configures YOUTUBE_API_KEY in Streamlit Secrets.")
 
 st.divider()
 st.subheader("Before publishing")
